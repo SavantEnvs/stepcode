@@ -1,0 +1,43 @@
+# Historical target NAME preserved from the retired mayhemheroes integration (project stepcode /
+# target exp2python) so Mayhem run history stays attached. The old root Mayhemfile ran
+# `/install/bin/exp2python @@` (an autotools/cmake DESTDIR-style install prefix from the pre-
+# two-branch layout, libfuzzer: false). Ported additively:
+#   - the binary now lives at /mayhem/exp2python (new layout) instead of /install/bin/exp2python
+#   - project is owner-qualified (savantenvs/stepcode) so CI runs land in the org workspace
+#
+# exp2python is stepcode's EXPRESS (ISO-10303-11) -> Python code generator: it parses a single
+# .exp schema file given as its one positional argument and writes <schema-name>.{py,h} into the
+# CURRENT WORKING DIRECTORY (verified in src/exp2python/src/classes_wrapper_python.cc /
+# multpass_python.c: FILEcreate() is always called with a bare relative filename, never a path —
+# there is no output-directory flag). mayhem/build.sh gives it a writable /tmp/exp2python-out
+# working directory (never a path under /mayhem, which is read-only during coverage collection).
+#
+# No `filepath:` needed: verified locally (native build, both with and without a `.exp` suffix on
+# the input path) that EXPRESSparse()/EXPRESSparse's caller in src/express/express.c parses purely
+# on file CONTENT — the `.exp` suffix (src/express/express.c:339, `strrchr(filename, '.')`) is only
+# stripped to derive a display basename; it is never required to trigger parsing. A bare `@@` is
+# correct here, like semblance/dump's content-sniffing target.
+project: savantenvs/stepcode
+target: exp2python
+
+# Canonical two-entry seed directive (docs/seed-corpus.md): the server-accumulated tar plus the
+# per-target committed seeds at mayhem/exp2python/testsuite. Seeds are upstream's own small,
+# hand-authored EXPRESS schemas from test/unitary_schemas/ + test/buggy/ (a mix of valid schemas
+# covering many EXPRESS constructs — entities, types, selects, enumerations, inheritance, WHERE
+# rules — plus a couple of deliberately malformed ones), copied verbatim; the multi-megabyte
+# production schemas under data/ (ap203/ap242/ifc4/...) are excluded as seeds (too large to be
+# useful mutation starting points, though excellent for manual/offline campaigns).
+testsuite:
+  - https://$MAYHEM_DOMAIN/$MAYHEM_PROJECT/$MAYHEM_TARGET/testsuite.tar
+  - file://mayhem/exp2python/testsuite
+
+cmds:
+  - cmd: /mayhem/exp2python @@
+    # REQUIRED, and dropped by mistake in the original port of this file (the header above already
+    # records that the retired mayhemheroes integration carried `libfuzzer: false`). exp2python is a
+    # raw process-per-input CLI with no LLVMFuzzerTestOneInput, but Mayhem's auto-detection decided
+    # otherwise on run #1 and drove it in libFuzzer mode — i.e. with no `@@` argument at all — so the
+    # binary printed its usage and exited 1 on every execution: "Your libFuzzer target exited
+    # abnormally with exit code 1", auto-resolution failed, 0 edges. Pinning it off restores the
+    # file-argument invocation this target has always needed.
+    libfuzzer: false
